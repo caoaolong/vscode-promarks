@@ -1,6 +1,7 @@
 {
     "name": "vscode-promarks",
     "displayName": "vscode-promarks",
+    "publisher": "codingsoul",
     "icon": "logo.png",
     "description": "项目收藏夹插件，用于收藏和管理常用项目。在未打开工作区时提供简洁的启动页面，集中展示已收藏的项目，支持一键快速打开，让开发者更高效地进入常用工程。 🚀",
     "version": "0.0.1",
