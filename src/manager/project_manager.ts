@@ -9,6 +9,9 @@ export interface Project {
   language: string;
   remark?: string;
   lastOpened: number;
+  // SSH Remote specific
+  isRemote?: boolean;
+  remoteHost?: string;
 }
 
 export class ProjectManager {
@@ -40,13 +43,32 @@ export class ProjectManager {
       language: language,
       remark: "",
       lastOpened: Date.now(),
+      isRemote: false
     };
 
+    await this.saveProject(newProject);
+  }
+
+  public async addRemoteProject(host: string, remotePath: string): Promise<void> {
+    const name = path.basename(remotePath) || host;
+    const newProject: Project = {
+      id: `ssh://${host}${remotePath}`, // Unique ID for remote
+      name: name,
+      path: remotePath,
+      language: 'other', // Cannot detect easily without connection
+      remark: `SSH: ${host}`,
+      lastOpened: Date.now(),
+      isRemote: true,
+      remoteHost: host
+    };
+    await this.saveProject(newProject);
+  }
+
+  private async saveProject(project: Project): Promise<void> {
     const projects = this.getProjects();
     // Remove existing if present (to update it)
-    const filtered = projects.filter((p) => p.path !== folderPath);
-    filtered.push(newProject);
-
+    const filtered = projects.filter((p) => p.id !== project.id && p.path !== project.path);
+    filtered.push(project);
     await this.context.globalState.update(ProjectManager.STORAGE_KEY, filtered);
   }
 
