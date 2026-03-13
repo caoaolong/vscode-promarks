@@ -8,6 +8,7 @@ export interface Project {
   path: string;
   language: string;
   remark?: string;
+  tags?: string[];
   lastOpened: number;
   // SSH Remote specific
   isRemote?: boolean;
@@ -16,6 +17,7 @@ export interface Project {
 
 export class ProjectManager {
   private static readonly STORAGE_KEY = "vscode-promarks.projects";
+  private static readonly TAGS_KEY = "vscode-promarks.tags";
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -32,6 +34,16 @@ export class ProjectManager {
     return this.getProjects().find((p) => p.id === projectId);
   }
 
+  public getTags(): string[] {
+    return this.context.globalState.get<string[]>(ProjectManager.TAGS_KEY, []);
+  }
+
+  public async upsertTags(tags: string[]): Promise<void> {
+    const current = this.getTags();
+    const merged = this.mergeTags(current, tags);
+    await this.context.globalState.update(ProjectManager.TAGS_KEY, merged);
+  }
+
   public async addProject(folderPath: string): Promise<void> {
     const name = path.basename(folderPath);
     const language = await this.detectLanguage(folderPath);
@@ -42,8 +54,9 @@ export class ProjectManager {
       path: folderPath,
       language: language,
       remark: "",
+      tags: [],
       lastOpened: Date.now(),
-      isRemote: false
+      isRemote: false,
     };
 
     await this.saveProject(newProject);
@@ -55,11 +68,12 @@ export class ProjectManager {
       id: `ssh://${host}${remotePath}`, // Unique ID for remote
       name: name,
       path: remotePath,
-      language: 'other', // Cannot detect easily without connection
+      language: "other",
       remark: `SSH: ${host}`,
+      tags: [],
       lastOpened: Date.now(),
       isRemote: true,
-      remoteHost: host
+      remoteHost: host,
     };
     await this.saveProject(newProject);
   }
@@ -67,7 +81,9 @@ export class ProjectManager {
   private async saveProject(project: Project): Promise<void> {
     const projects = this.getProjects();
     // Remove existing if present (to update it)
-    const filtered = projects.filter((p) => p.id !== project.id && p.path !== project.path);
+    const filtered = projects.filter(
+      (p) => p.id !== project.id && p.path !== project.path,
+    );
     filtered.push(project);
     await this.context.globalState.update(ProjectManager.STORAGE_KEY, filtered);
   }
@@ -95,7 +111,7 @@ export class ProjectManager {
 
   public async updateProject(
     projectId: string,
-    updates: { language?: string; remark?: string },
+    updates: { language?: string; remark?: string; tags?: string[] },
   ): Promise<void> {
     const projects = this.getProjects();
     const projectIndex = projects.findIndex((p) => p.id === projectId);
@@ -106,11 +122,16 @@ export class ProjectManager {
     const updated: Project = {
       ...projects[projectIndex],
       ...updates,
+      tags: updates.tags ? this.normalizeTags(updates.tags) : projects[projectIndex].tags,
     };
 
     const nextProjects = projects.filter((p) => p.id !== projectId);
     nextProjects.push(updated);
     await this.context.globalState.update(ProjectManager.STORAGE_KEY, nextProjects);
+
+    if (updates.tags) {
+      await this.upsertTags(updates.tags);
+    }
   }
 
   private async detectLanguage(folderPath: string): Promise<string> {
@@ -160,5 +181,36 @@ export class ProjectManager {
     } catch (error) {
       return "other";
     }
+  }
+
+  private normalizeTags(tags: string[]): string[] {
+    return this.mergeTags([], tags);
+  }
+
+  private mergeTags(base: string[], extra: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    const pushTag = (tag: string) => {
+      const trimmed = tag.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      result.push(trimmed);
+    };
+
+    for (const tag of base) {
+      pushTag(tag);
+    }
+    for (const tag of extra) {
+      pushTag(tag);
+    }
+
+    return result;
   }
 }
