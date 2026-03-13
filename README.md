@@ -1,6 +1,8 @@
 # vscode-promarks
 
-![](https://raw.githubusercontent.com/caoaolong/vscode-promarks/refs/heads/master/example.png)
+![](https://raw.githubusercontent.com/caoaolong/vscode-promarks/refs/heads/master/example1.png)
+
+![](https://raw.githubusercontent.com/caoaolong/vscode-promarks/refs/heads/master/example2.png)
 
 ---
 
