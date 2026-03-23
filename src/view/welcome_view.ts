@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ProjectManager, Project } from '../manager/project_manager';
+import {
+    addLocalFolderProject,
+    addRemoteProjectFlow,
+    deletePromarksProject,
+    editPromarksProject,
+    openPromarksProject
+} from '../project_actions';
 
 export class WelcomeView {
     public static readonly viewType = 'vscode-promarks.welcomeView';
@@ -88,79 +94,35 @@ export class WelcomeView {
         this.panel.webview.html = this.getHtmlForWebview(projects);
     }
 
+    public refresh(): void {
+        void this.updateContent();
+    }
+
     private async openProject(projectPath: string, isRemote?: boolean) {
-        if (isRemote) {
-             // Remote URI format: vscode-remote://ssh-remote+<host><path>
-             // projectPath here is expected to be the remote path.
-             // Wait, for remote projects, the 'path' stored in project is the remote path.
-             // But we need the host.
-             // I'll need to retrieve the project to get the host.
-             // Actually, I can pass the full URI string or just the ID.
-             // The ID for remote projects is ssh://host/path.
-             // Let's rely on finding the project by ID if possible, but the message sends path.
-             // Let's check project manager.
-             const projects = this.projectManager.getProjects();
-             const project = projects.find(p => p.path === projectPath && p.isRemote);
-             if (project && project.remoteHost) {
-                 // Construct the authority: ssh-remote+<host>
-                 // Note: hex encoding might be needed for some characters, but standard hostnames are fine.
-                 const authority = `ssh-remote+${project.remoteHost}`;
-                 const uri = vscode.Uri.from({
-                     scheme: 'vscode-remote',
-                     authority: authority,
-                     path: project.path
-                 });
-                 await this.projectManager.updateLastOpened(project.id);
-                 await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: true });
-                 return;
-             }
+        const projects = this.projectManager.getProjects();
+        const project = isRemote
+            ? projects.find((p) => p.path === projectPath && p.isRemote)
+            : projects.find((p) => p.path === projectPath && !p.isRemote) ??
+              projects.find((p) => p.id === projectPath);
+        if (!project) {
+            return;
         }
-        
-        const uri = vscode.Uri.file(projectPath);
-        // Update last opened time
-        await this.projectManager.updateLastOpened(projectPath);
-        // Force new window false to replace current if desired, but user might want new window.
-        // Usually, if no workspace is open, it reuses the window.
-        await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: false });
+        const newWindow = Boolean(isRemote);
+        await openPromarksProject(this.projectManager, project, newWindow);
+        await this.updateContent();
     }
 
     private async addProject() {
-        const result = await vscode.window.showOpenDialog({
-            canSelectFiles: false,
-            canSelectFolders: true,
-            canSelectMany: false,
-            openLabel: 'Add Project'
-        });
-
-        if (result && result.length > 0) {
-            const folderPath = result[0].fsPath;
-            await this.projectManager.addProject(folderPath);
-            await this.updateContent();
-            if (this.getOpenAfterAdd()) {
-                await this.openProject(folderPath);
-            }
+        const folderPath = await addLocalFolderProject(this.projectManager, () =>
+            void this.updateContent()
+        );
+        if (folderPath && this.getOpenAfterAdd()) {
+            await this.openProject(folderPath, false);
         }
     }
 
     private async addRemoteProject() {
-        const host = await vscode.window.showInputBox({
-            prompt: 'Enter SSH Host (e.g., user@hostname)',
-            placeHolder: 'user@hostname'
-        });
-        if (!host) {
-            return;
-        }
-
-        const path = await vscode.window.showInputBox({
-            prompt: 'Enter Remote Path',
-            placeHolder: '/home/user/project'
-        });
-        if (!path) {
-            return;
-        }
-
-        await this.projectManager.addRemoteProject(host, path);
-        await this.updateContent();
+        await addRemoteProjectFlow(this.projectManager, () => void this.updateContent());
     }
 
     private getOpenAfterAdd(): boolean {
@@ -230,98 +192,7 @@ export class WelcomeView {
     }
 
     private async editProject(id: string) {
-        const project = this.projectManager.getProject(id);
-        if (!project) {
-            return;
-        }
-
-        const remark = await vscode.window.showInputBox({
-            prompt: 'Project remark',
-            value: project.remark ?? '',
-        });
-
-        if (remark === undefined) {
-            return;
-        }
-
-        const languages = [
-            'python',
-            'java',
-            'go',
-            'javascript',
-            'typescript',
-            'rust',
-            'cpp',
-            'csharp',
-            'other',
-        ];
-
-        const languagePicks = languages.map((value) => ({
-            label: value,
-            value,
-        }));
-
-        const selectedLanguage = await vscode.window.showQuickPick(languagePicks, {
-            placeHolder: 'Select language',
-            canPickMany: false,
-        });
-
-        const allTags = this.projectManager.getTags();
-        const projectTags = Array.isArray(project.tags) ? project.tags : [];
-        const selectedTagKeys = new Set(projectTags.map((t) => t.toLowerCase()));
-        type TagPickItem = vscode.QuickPickItem & { value: string };
-        const createValue = '__create__';
-        const tagPickItems: TagPickItem[] = [
-            { label: 'Create new tag…', value: createValue },
-            ...allTags
-                .slice()
-                .sort((a, b) => a.localeCompare(b))
-                .map((tag) => ({
-                    label: tag,
-                    value: tag,
-                    picked: selectedTagKeys.has(tag.toLowerCase()),
-                })),
-        ];
-
-        const tagSelection = await vscode.window.showQuickPick<TagPickItem>(tagPickItems, {
-            canPickMany: true,
-            placeHolder: 'Select tags (multiple)',
-            matchOnDescription: true,
-        });
-
-        let nextTags = projectTags;
-        if (tagSelection) {
-            const chosen = tagSelection
-                .filter((i) => i.value !== createValue)
-                .map((i) => i.value);
-
-            if (tagSelection.some((i) => i.value === createValue)) {
-                const input = await vscode.window.showInputBox({
-                    prompt: 'New tags (comma separated)',
-                    placeHolder: 'e.g. backend, demo, urgent',
-                });
-                if (input !== undefined) {
-                    const created = input
-                        .split(',')
-                        .map((t) => t.trim())
-                        .filter((t) => t.length > 0);
-                    await this.projectManager.upsertTags(created);
-                    nextTags = this.mergeTags(chosen, created);
-                } else {
-                    nextTags = chosen;
-                }
-            } else {
-                nextTags = chosen;
-            }
-        }
-
-        await this.projectManager.updateProject(id, {
-            remark,
-            language: selectedLanguage?.value ?? project.language,
-            tags: nextTags,
-        });
-
-        await this.updateContent();
+        await editPromarksProject(this.projectManager, id, () => void this.updateContent());
     }
 
     private async editTags(id: string) {
@@ -383,15 +254,7 @@ export class WelcomeView {
     }
 
     private async deleteProject(id: string) {
-        const choice = await vscode.window.showWarningMessage(
-            'Are you sure you want to remove this project from the list?',
-            'Yes',
-            'No'
-        );
-        if (choice === 'Yes') {
-            await this.projectManager.removeProject(id);
-            await this.updateContent();
-        }
+        await deletePromarksProject(this.projectManager, id, () => void this.updateContent());
     }
 
     private getHtmlForWebview(projects: Project[]): string {

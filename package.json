@@ -25,8 +25,102 @@
             {
                 "command": "vscode-promarks.showWelcomePage",
                 "title": "Show Project Manager"
+            },
+            {
+                "command": "vscode-promarks.sidebar.openHere",
+                "title": "在此窗口打开",
+                "icon": "$(folder-opened)"
+            },
+            {
+                "command": "vscode-promarks.sidebar.openNewWindow",
+                "title": "在新窗口打开",
+                "icon": "$(empty-window)"
+            },
+            {
+                "command": "vscode-promarks.sidebar.editProject",
+                "title": "修改",
+                "icon": "$(edit)"
+            },
+            {
+                "command": "vscode-promarks.sidebar.deleteProject",
+                "title": "删除",
+                "icon": "$(trash)"
+            },
+            {
+                "command": "vscode-promarks.sidebar.importLocalWorkspace",
+                "title": "导入当前工作区",
+                "icon": "$(plus)"
+            },
+            {
+                "command": "vscode-promarks.sidebar.importRemoteProject",
+                "title": "手动添加 SSH 项目",
+                "icon": "$(remote-explorer)"
             }
-        ]
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "vscode-promarks-project-manager",
+                    "title": "项目管理",
+                    "icon": "logo.png"
+                }
+            ]
+        },
+        "views": {
+            "vscode-promarks-project-manager": [
+                {
+                    "id": "vscode-promarks-local-projects",
+                    "name": "本地",
+                    "contextualTitle": "本地项目"
+                },
+                {
+                    "id": "vscode-promarks-remote-projects",
+                    "name": "远程",
+                    "contextualTitle": "远程项目"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "vscode-promarks.sidebar.importLocalWorkspace",
+                    "when": "view == vscode-promarks-local-projects",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "vscode-promarks.sidebar.importLocalWorkspace",
+                    "when": "view == vscode-promarks-remote-projects",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "vscode-promarks.sidebar.importRemoteProject",
+                    "when": "view == vscode-promarks-remote-projects",
+                    "group": "navigation@2"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "vscode-promarks.sidebar.openHere",
+                    "when": "(view == vscode-promarks-local-projects || view == vscode-promarks-remote-projects) && viewItem == promarksProject",
+                    "group": "inline@1"
+                },
+                {
+                    "command": "vscode-promarks.sidebar.openNewWindow",
+                    "when": "(view == vscode-promarks-local-projects || view == vscode-promarks-remote-projects) && viewItem == promarksProject",
+                    "group": "inline@2"
+                },
+                {
+                    "command": "vscode-promarks.sidebar.editProject",
+                    "when": "(view == vscode-promarks-local-projects || view == vscode-promarks-remote-projects) && viewItem == promarksProject",
+                    "group": "inline@3"
+                },
+                {
+                    "command": "vscode-promarks.sidebar.deleteProject",
+                    "when": "(view == vscode-promarks-local-projects || view == vscode-promarks-remote-projects) && viewItem == promarksProject",
+                    "group": "inline@4"
+                }
+            ]
+        }
     },
     "scripts": {
         "vscode:prepublish": "npm run package",

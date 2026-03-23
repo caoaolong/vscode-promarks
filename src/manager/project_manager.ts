@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
 import * as path from "path";
 
 export interface Project {
@@ -45,37 +44,82 @@ export class ProjectManager {
   }
 
   public async addProject(folderPath: string): Promise<void> {
-    const name = path.basename(folderPath);
-    const language = await this.detectLanguage(folderPath);
-
-    const newProject: Project = {
-      id: folderPath, // Use path as ID for simplicity
-      name: name,
-      path: folderPath,
-      language: language,
-      remark: "",
+    const language = await this.detectLanguageFromUri(vscode.Uri.file(folderPath));
+    await this.addLocalProjectWithMeta({
+      folderPath,
+      name: path.basename(folderPath),
       tags: [],
+      language,
+      remark: "",
+    });
+  }
+
+  public async addLocalProjectWithMeta(options: {
+    folderPath: string;
+    name: string;
+    tags: string[];
+    language: string;
+    remark?: string;
+  }): Promise<void> {
+    const tags = this.normalizeTags(options.tags);
+    await this.upsertTags(tags);
+    const newProject: Project = {
+      id: options.folderPath,
+      name: options.name.trim() || path.basename(options.folderPath),
+      path: options.folderPath,
+      language: options.language,
+      remark: options.remark ?? "",
+      tags,
       lastOpened: Date.now(),
       isRemote: false,
     };
-
     await this.saveProject(newProject);
   }
 
   public async addRemoteProject(host: string, remotePath: string): Promise<void> {
-    const name = path.basename(remotePath) || host;
-    const newProject: Project = {
-      id: `ssh://${host}${remotePath}`, // Unique ID for remote
-      name: name,
-      path: remotePath,
+    await this.addRemoteProjectWithMeta({
+      host,
+      remotePath,
+      name: path.basename(remotePath) || host,
+      tags: [],
       language: "other",
       remark: `SSH: ${host}`,
-      tags: [],
+    });
+  }
+
+  public async addRemoteProjectWithMeta(options: {
+    host: string;
+    remotePath: string;
+    name: string;
+    tags: string[];
+    language: string;
+    remark?: string;
+  }): Promise<void> {
+    const tags = this.normalizeTags(options.tags);
+    await this.upsertTags(tags);
+    const id = `ssh://${options.host}${options.remotePath}`;
+    const newProject: Project = {
+      id,
+      name: options.name.trim() || path.basename(options.remotePath) || options.host,
+      path: options.remotePath,
+      language: options.language,
+      remark: options.remark ?? `SSH: ${options.host}`,
+      tags,
       lastOpened: Date.now(),
       isRemote: true,
-      remoteHost: host,
+      remoteHost: options.host,
     };
     await this.saveProject(newProject);
+  }
+
+  public async detectLanguageFromUri(folderUri: vscode.Uri): Promise<string> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(folderUri);
+      const names = entries.map(([n]) => n);
+      return this.detectLanguageFromFileNames(names);
+    } catch {
+      return "other";
+    }
   }
 
   private async saveProject(project: Project): Promise<void> {
@@ -134,53 +178,32 @@ export class ProjectManager {
     }
   }
 
-  private async detectLanguage(folderPath: string): Promise<string> {
-    try {
-      const files = await fs.promises.readdir(folderPath);
-      if (files.includes("pom.xml") || files.some((f) => f.endsWith(".java"))) {
-        return "java";
-      }
-      if (
-        files.includes("tsconfig.json") ||
-        files.some((f) => f.endsWith(".ts"))
-      ) {
-        return "typescript";
-      }
-      if (
-        files.includes("package.json") ||
-        files.some((f) => f.endsWith(".js"))
-      ) {
-        return "javascript";
-      }
-      if (files.includes("go.mod") || files.some((f) => f.endsWith(".go"))) {
-        return "go";
-      }
-      if (
-        files.includes("requirements.txt") ||
-        files.some((f) => f.endsWith(".py"))
-      ) {
-        return "python";
-      }
-      if (
-        files.includes("Cargo.toml") ||
-        files.some((f) => f.endsWith(".rs"))
-      ) {
-        return "rust";
-      }
-      if (
-        files.some(
-          (f) => f.endsWith(".cpp") || f.endsWith(".h") || f.endsWith(".c"),
-        )
-      ) {
-        return "cpp";
-      }
-      if (files.some((f) => f.endsWith(".cs"))) {
-        return "csharp";
-      }
-      return "other";
-    } catch (error) {
-      return "other";
+  private detectLanguageFromFileNames(files: string[]): string {
+    if (files.includes("pom.xml") || files.some((f) => f.endsWith(".java"))) {
+      return "java";
     }
+    if (files.includes("tsconfig.json") || files.some((f) => f.endsWith(".ts"))) {
+      return "typescript";
+    }
+    if (files.includes("package.json") || files.some((f) => f.endsWith(".js"))) {
+      return "javascript";
+    }
+    if (files.includes("go.mod") || files.some((f) => f.endsWith(".go"))) {
+      return "go";
+    }
+    if (files.includes("requirements.txt") || files.some((f) => f.endsWith(".py"))) {
+      return "python";
+    }
+    if (files.includes("Cargo.toml") || files.some((f) => f.endsWith(".rs"))) {
+      return "rust";
+    }
+    if (files.some((f) => f.endsWith(".cpp") || f.endsWith(".h") || f.endsWith(".c"))) {
+      return "cpp";
+    }
+    if (files.some((f) => f.endsWith(".cs"))) {
+      return "csharp";
+    }
+    return "other";
   }
 
   private normalizeTags(tags: string[]): string[] {
